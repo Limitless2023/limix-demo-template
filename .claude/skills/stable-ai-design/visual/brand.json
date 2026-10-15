@@ -1,0 +1,47 @@
+{
+  "note": "由设计系统 npm run build（build-visual.mjs）从 tokens.json 生成，不手改。",
+  "version": "1.0.0",
+  "scale": 2,
+  "colors": {
+    "ink": "#0a0604",
+    "white": "#ffffff",
+    "primaryText": "#ba4a17",
+    "muted": "#656565",
+    "border": "#dfdfdf"
+  },
+  "gradient": [
+    [
+      0,
+      "#e8401c"
+    ],
+    [
+      0.62,
+      "#fe5d33"
+    ],
+    [
+      1,
+      "#f29942"
+    ]
+  ],
+  "font": "\"PingFang SC\", \"Noto Sans SC\", \"Microsoft YaHei\", \"Helvetica Neue\", Arial, sans-serif",
+  "logo": {
+    "href": "logo-lockup-horizontal-hd.png",
+    "width": 1232,
+    "height": 360
+  },
+  "mark": {
+    "href": "logo-mark-hd.png",
+    "width": 450,
+    "height": 480
+  },
+  "wordmark": {
+    "href": "logo-wordmark-hd.png",
+    "width": 526,
+    "height": 240
+  },
+  "graphic": {
+    "href": "logo-mark-xl.png",
+    "width": 1874,
+    "height": 2000
+  }
+}

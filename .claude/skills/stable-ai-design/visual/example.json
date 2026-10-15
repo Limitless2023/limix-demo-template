@@ -1,0 +1,44 @@
+[
+  {
+    "template": "wechat-cover",
+    "variant": "light",
+    "name": "wechat-cover",
+    "fields": {
+      "eyebrow": "LimiX 技术解读",
+      "title": "LimiX 2.0 发布\n结构化数据基础模型",
+      "subtitle": "分类、回归与时序预测，免训练直接用"
+    }
+  },
+  {
+    "template": "wechat-thumb",
+    "variant": "light",
+    "name": "wechat-thumb",
+    "fields": {
+      "title": "LimiX\n2.0 发布"
+    }
+  },
+  {
+    "template": "poster",
+    "variant": "light",
+    "name": "poster",
+    "fields": {
+      "eyebrow": "LimiX 线上研讨会",
+      "title": "工业时序预测的\n免训练实践",
+      "subtitle": "从数据接入到上线，讲清 LimiX 在\n钢铁、电力场景的落地方法",
+      "info": "时间｜2026 年 10 月 16 日 14:00\n形式｜线上直播\n嘉宾｜稳准智能算法团队",
+      "cta": "扫码报名",
+      "note": "报名后发送直播链接"
+    }
+  },
+  {
+    "template": "square",
+    "variant": "light",
+    "name": "square",
+    "fields": {
+      "eyebrow": "LimiX 时序预测",
+      "value": "+18.6%",
+      "caption": "高炉炉温 4 小时预测\n准确率提升",
+      "source": "示例数据，非真实客户结果"
+    }
+  }
+]
