@@ -4,7 +4,8 @@
  * [POS]: 场景注册表：首页卡片与侧栏导航都从这里生成。新增场景 = 在这里加一条 + 建 app/scenarios/<slug>/page.tsx。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { Factory, FlaskConical, Zap, type LucideIcon } from "lucide-react"
+import { Factory, Zap, type LucideIcon } from "lucide-react"
+
 export type Scenario = {
   slug: string
   title: string
@@ -25,14 +26,6 @@ export const scenarios: Scenario[] = [
     capability: "时序预测",
     summary: "用最近三周逐小时负荷预测未来 24–72 小时负荷与 P10–P90 区间，支撑日前调度与购电计划。",
     icon: Zap,
-  },
-  {
-    slug: "concrete-strength",
-    title: "混凝土强度即时预估",
-    industry: "建材",
-    capability: "回归 · 免训练即时推理",
-    summary: "历史配比与实测强度当作上下文，传一次反复用；新配比来一条判一条，几秒出强度与区间，实测值回来后加入上下文立刻生效。",
-    icon: FlaskConical,
   },
   {
     slug: "rolling-force",

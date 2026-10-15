@@ -26,25 +26,17 @@ app/layout.tsx                # 主题 + 全站骨架（DemoShell）
 app/page.tsx                  # 场景首页：卡片来自 lib/scenarios.ts，显示是否已连接 LimiX
 app/scenarios/<slug>/         # 一个场景一个目录：page.tsx（服务端，读模拟模式）+ <slug>-demo.tsx（客户端交互）
 app/api/forecast/route.ts     # 时序预测：上传 → 同步预测（P10/P50/P90）→ 下载结果
-app/api/instant/              # 即时预估：prepare / append / reset 返回 JSON，predict 以 NDJSON 流逐步返回（validate.ts 校验入参）
 app/api/limix/[...path]/      # 通用转发：/api/limix/v1/<接口> → LimiX，服务端加 Key
 lib/limix/                    # LimiX 调用层，见 lib/limix/CLAUDE.md
 lib/scenarios.ts              # 场景清单（首页卡片与侧栏导航）
-lib/instant-types.ts          # 即时预估的前后端契约（场景配置、预测事件、上下文信息）
-lib/instant-scenarios.ts      # 即时预估的场景配置：输入列、目标列、上下文表、扫描曲线、文案
-hooks/use-instant.ts          # 即时预估页面与 /api/instant 之间的桥：上下文状态、预测进度
-components/instant/           # 即时预估的整页组件，见 components/instant/CLAUDE.md
 components/demo/demo-shell.tsx # stable-ai-design 的 AppShell，侧栏按场景清单生成
-public/samples/               # 示例数据：power-load 为合成数据；concrete-* 为公开数据集（UCI，CC BY 4.0）：context 上下文、samples 测试记录、upload 演示上传用
-scripts/eval_instant.py       # 即时预估的离线评估（LimiX 与参照方法），写出 data/eval/<slug>/
-data/eval/<slug>/             # 离线评估结果：metrics.json（场景卡「效果」一栏的唯一来源）与 predictions.csv
+public/samples/               # 示例数据（合成数据）
 ```
 
-## 即时预估（一次建模、多次推理）
+## LimiX 调用要点
 
-场景页 `app/scenarios/concrete-strength/`，分「案例介绍」与「在线演示」两个 tab（`?tab=demo` 直接打开演示）。历史表（含目标列）作为上下文只上传一次，之后每次只上传新记录：上传 → 异步回归任务（P10 / P50 / P90）→ 轮询 → 取回。新记录带上实测值后可加入上下文，重新上传约 0.5 秒，不用训练。加一个行业场景 = `lib/instant-scenarios.ts` 加一条配置（含场景说明与字段含义）+ `public/samples/` 放上下文表、测试记录、示例上传文件 + 跑一次 `uv run --with scikit-learn python scripts/eval_instant.py …` 生成评估结果 + 建 `app/scenarios/<slug>/page.tsx` 渲染 `InstantDemo`。页面「效果」数字只读 metrics.json，不手抄。当前上下文 CSV 经 `GET /api/instant?scenario=<slug>&download=context` 下载（含演示中加入的记录）。
-
-2026-10-15 实测（本机直连，16M，单条）：一次预测 5.7–6.3 秒（上传 0.5、提交 0.2、计算 4.7–4.9、取回 0.1–0.8）；一次 5 或 6 条与 1 条一样快。**轮询不能太密**：任务运行中每秒查一次，状态查询本身会挂住 30 秒以上；`waitForTask` 因此先等 4 秒再查、之后每 3 秒一次，5 次全部 4.7 秒完成。
+- 异步任务用 `lib/limix/client.ts` 的 `submitInferenceTask` + `waitForTask`。**轮询不能太密**（2026-10-15 实测）：任务运行中每秒查一次，状态查询本身会挂住 30 秒以上；`waitForTask` 先等 4 秒再查、之后每 3 秒一次，单条回归约 6 秒出结果。一次传 5 条与 1 条一样快。
+- 「一次建模、多次推理」的完整做法（上下文表传一次、只传新记录、实测值加入上下文）见 `limix-scenario-demos` 的即时预估场景，它从本模板复制而来。
 
 ## 新增一个场景
 

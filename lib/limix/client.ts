@@ -1,7 +1,7 @@
 /**
  * [INPUT]: 依赖 ./config 的 limixConfig（地址、Key、模型规格）
  * [OUTPUT]: 导出 LimixError、uploadCsv、predictTimeseries、submitInferenceTask、waitForTask、downloadText
- * [POS]: lib/limix 的 HTTP 层，唯一直接请求 LimiX 开放平台的文件。forecast.ts 与 instant.ts 编排完整链路。
+ * [POS]: lib/limix 的 HTTP 层，唯一直接请求 LimiX 开放平台的文件。forecast.ts 编排时序链路；异步任务（submitInferenceTask + waitForTask）供新场景直接用。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import "server-only"
