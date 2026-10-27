@@ -1,16 +1,22 @@
 /**
- * [INPUT]: 依赖 ./config 的 limixConfig（地址、Key、模型规格）
- * [OUTPUT]: 导出 LimixError、uploadCsv、predictTimeseries、submitInferenceTask、waitForTask、downloadText
- * [POS]: lib/limix 的 HTTP 层，唯一直接请求 LimiX 开放平台的文件。forecast.ts 编排时序链路；异步任务（submitInferenceTask + waitForTask）供新场景直接用。
+ * [INPUT]: 依赖 ./config 的 limixConfig（地址、Key、模型规格）；依赖 undici 的 fetch、Agent、FormData（要单独设连接超时）
+ * [OUTPUT]: 导出 LimixError、uploadCsv、submitInferenceTask、waitForTask、downloadText
+ * [POS]: lib/limix 的 HTTP 层，唯一直接请求 LimiX 开放平台的文件。forecast.ts 与 instant.ts 编排完整链路。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import "server-only"
+
+import { Agent, fetch, FormData, type RequestInit, type Response } from "undici"
 
 import { limixConfig } from "./config"
 
 // LimiX 开放平台的服务端调用。接口文档：https://api-docs.stable-ai.cn/
 // 约定：请求头只有 X-API-KEY；成功返回 { code: 0, message, data }，code ≠ 0 抛 LimixError（带原始错误码）。
-// Node 的 fetch 默认复用连接：连续请求省掉重复的 TLS 握手（2026-10-15 实测每次新建连接约 0.8 秒）。
+// 连接复用：连续请求省掉重复的 TLS 握手（2026-10-15 实测每次新建连接约 0.8 秒）。
+// 连接超时单独设为 5 秒、失败重试 1 次，连不上时约 10 秒就报错（默认 10 秒超时 × 3 次要等 30 秒）。
+// 2026-10-16 查明：LimiX 服务器会对部分境外云服务器出口 IP 直接丢包，Vercel 分到这类 IP 时怎么重试都连不上，
+// 只能尽快报错；根治要平台侧放开拦截。连接层失败时请求还没到服务端，重发是安全的。
+// 用 undici 自己的 fetch 而不是全局 fetch：全局 fetch 不能单独设连接超时，混用不同版本的 undici 连接池也不可靠。
 
 export class LimixError extends Error {
   constructor(
@@ -22,17 +28,45 @@ export class LimixError extends Error {
   }
 }
 
+const CONNECT_TIMEOUT_MS = 5000
+const RETRIES = 1
+
+const pool = new Agent({ connect: { timeout: CONNECT_TIMEOUT_MS } })
+
+// 连接层失败（fetch 抛错、没有拿到任何 HTTP 响应）重试 RETRIES 次；拿到响应后的业务错误不重试。
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(`${limixConfig.baseUrl}${path}`, {
+        ...init,
+        headers: { "X-API-KEY": limixConfig.apiKey, ...(init.headers as Record<string, string> | undefined) },
+        dispatcher: pool,
+      })
+    } catch (error) {
+      if (attempt >= RETRIES) throw new LimixError(`连接 LimiX 失败（已重试 ${RETRIES} 次）：${describe(error)}`, "network")
+      console.warn(`[limix] 连接失败，重试第 ${attempt + 1} 次：${describe(error)}`)
+      await sleep(300)
+    }
+  }
+}
+
+// fetch failed 本身不说明原因，原因在 cause 里；连接超时换成中文，页面上一眼看懂
+function describe(error: unknown) {
+  const cause = (error as { cause?: { code?: string; message?: string } }).cause
+  if (cause?.code === "UND_ERR_CONNECT_TIMEOUT") return `连接超时（${CONNECT_TIMEOUT_MS / 1000} 秒内没连上 LimiX 服务器）`
+  return [error instanceof Error ? error.message : String(error), cause?.code, cause?.message].filter(Boolean).join(" · ")
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${limixConfig.baseUrl}${path}`, {
-    ...init,
-    headers: { "X-API-KEY": limixConfig.apiKey, ...init.headers },
-    cache: "no-store",
-  })
-  const body = await res.json().catch(() => null)
+  const res = await send(path, init)
+  const body = await readJson(res)
   if (!body) throw new LimixError(`LimiX 返回了无法解析的响应（HTTP ${res.status}）`, res.status)
   if (body.code !== 0) throw new LimixError(`LimiX 错误 ${body.code}：${body.message}`, body.code, res.status >= 400 ? res.status : 502)
   return body.data as T
 }
+
+type Envelope = { code: number | string; message?: string; data?: unknown }
+const readJson = (res: Response) => res.json().then((b) => b as Envelope, () => null)
 
 const postJson = <T>(path: string, json: unknown) =>
   request<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(json) })
@@ -48,29 +82,6 @@ export async function uploadCsv(csv: string, filename = "data.csv") {
     body: form,
   })
   return data
-}
-
-export type TimeseriesParams = {
-  trainDataVersionId: string
-  colDate: string
-  colTarget: string
-  horizon: number
-  contextSize: number
-  quantileLevels?: number[]
-}
-
-/** 时序同步预测（适合 demo 的小数据量），返回结果版本 ID。大数据量改用 /v1/inference/timeseries/tasks + 轮询。 */
-export async function predictTimeseries(p: TimeseriesParams) {
-  return postJson<{ task_id: string; status: string; result_version_id: string }>("/v1/inference/timeseries/predict", {
-    train_data_version_id: p.trainDataVersionId,
-    col_date: p.colDate,
-    col_target: p.colTarget,
-    horizon: p.horizon,
-    context_size: p.contextSize,
-    quantile: Boolean(p.quantileLevels?.length),
-    ...(p.quantileLevels?.length ? { quantile_levels: p.quantileLevels } : {}),
-    model_type: limixConfig.modelType,
-  })
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -97,7 +108,7 @@ export async function submitInferenceTask(kind: InferenceKind, body: Record<stri
 }
 
 /**
- * 轮询任务直到 is_ready（官方判据）。查询失败按网络抖动重试两次；超时抛错但任务仍在服务端运行，不自动重提。
+ * 轮询任务直到 is_ready（官方判据）。连接失败由 send() 重试；超时抛错但任务仍在服务端运行，不自动重提。
  *
  * 轮询节奏来自 2026-10-15 实测（单条回归，16M）：
  * - 任务运行中查得太密，状态查询本身会挂住 30 秒以上，并返回过期的 running；每秒查一次几乎必现，挂住期间重查只会更久。
@@ -115,18 +126,9 @@ export async function waitForTask(
 ) {
   const deadline = Date.now() + timeoutMs
   let last = ""
-  let failures = 0
   await sleep(firstDelayMs)
   while (Date.now() < deadline) {
-    let task: TaskSnapshot
-    try {
-      task = await request<TaskSnapshot>(`/v1/inference/tasks/${encodeURIComponent(taskId)}`)
-      failures = 0
-    } catch (error) {
-      if (error instanceof LimixError || ++failures > 2) throw error
-      await sleep(intervalMs)
-      continue
-    }
+    const task = await request<TaskSnapshot>(`/v1/inference/tasks/${encodeURIComponent(taskId)}`)
     if (task.status !== last) onStatus?.((last = task.status))
     if (task.is_ready) {
       if (task.result_version_id) return { ...task, result_version_id: task.result_version_id }
@@ -141,13 +143,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 下载数据版本或结果版本的文件内容（CSV 文本）。 */
 export async function downloadText(downloadId: string) {
-  const res = await fetch(`${limixConfig.baseUrl}/v1/data/download/${encodeURIComponent(downloadId)}`, {
-    headers: { "X-API-KEY": limixConfig.apiKey },
-    cache: "no-store",
-  })
+  const res = await send(`/v1/data/download/${encodeURIComponent(downloadId)}`)
   const type = res.headers.get("content-type") || ""
   if (!res.ok || type.includes("application/json")) {
-    const body = await res.json().catch(() => null)
+    const body = await readJson(res)
     throw new LimixError(`下载结果失败：${body?.message ?? `HTTP ${res.status}`}`, body?.code ?? res.status)
   }
   return res.text()

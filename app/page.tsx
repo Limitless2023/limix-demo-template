@@ -17,7 +17,7 @@ export default function Home() {
       <PageHeader
         eyebrow="LimiX 场景 demo"
         title="选择一个场景开始演示"
-        description="每个场景用一份数据走完整条链路：上传数据、调用 LimiX、看结果与业务解读。示例数据均为合成数据。"
+        description="每个场景一页：案例介绍、数据、在线预测。数据来源与许可写在各场景的数据页。"
       />
 
       {mock ? (
